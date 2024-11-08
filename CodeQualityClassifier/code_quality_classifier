@@ -1,0 +1,80 @@
+import subprocess
+import json
+from radon.complexity import cc_visit
+from radon.metrics import mi_visit
+from transformers import pipeline
+
+
+def code_quality(filepath):
+    """Provide an overall code score"""
+    # Load the model
+    classifier = pipeline(
+        task="text-classification", 
+        model="Johannes/distilbert-base-uncased-finetuned-code-snippet-quality-scoring"
+    )
+    
+    # Read the code from the specified file
+    with open(filepath, 'r') as file:
+        code = file.read()
+    
+    # Perform classification
+    result = classifier(code)
+    
+    # Map the labels to human-readable categories
+    label_mapping = {
+        'LABEL_0': 'Poor Quality',
+        'LABEL_1': 'Good Quality'
+    }
+    
+    # Extract the label and score from the result
+    label = result[0]['label']
+    score = result[0]['score']
+    quality = label_mapping.get(label, 'Unknown')
+
+    # Print the results
+    print(f"Code Quality: {quality} (Confidence Score: {score:.2f})")
+    return quality, score
+
+
+def analyze_complexity(filepath):
+    """Calculate cyclomatic complexity and maintainability index."""
+    with open(filepath, 'r') as file:
+        code = file.read()
+
+    complexity_results = cc_visit(code)
+    maintainability_index = mi_visit(code, multi=False)
+
+    print("\nComplexity Analysis:")
+    for item in complexity_results:
+        print(f"Function: {item.name}, Complexity: {item.complexity}")
+
+    print(f"\nMaintainability Index: {maintainability_index:.2f}")
+
+
+def check_code_style(filepath):
+    """Run pylint for code style and basic error checks."""
+    pylint_output = subprocess.run(
+        f'python -m pylint {filepath} -f json',
+        shell=True,
+        capture_output=True, text=True
+    )
+    try:
+        pylint_results = json.loads(pylint_output.stdout)
+    except json.JSONDecodeError:
+        print("Error: Unable to parse pylint output. Please check if pylint is installed correctly.")
+        return
+
+    print("\nPylint Style and Error Report:")
+    for issue in pylint_results:
+        print(f"{issue['message-id']} ({issue['symbol']}): {issue['message']} at line {issue['line']}")
+
+
+def main(filepath):
+    print(f"Analyzing file: {filepath}")
+    code_quality(filepath)
+    analyze_complexity(filepath)
+    check_code_style(filepath)
+
+
+if __name__ == "__main__":
+    main('testcode')
